@@ -1,20 +1,19 @@
 from flask import Flask, jsonify, request, render_template
 import os
-from sklearn.preprocessing import PolynomialFeatures
 from sklearn.pipeline import make_pipeline
+#from sklearn.preprocessing import PolynomialFeatures
 from sklearn.metrics import mean_squared_error, r2_score
 import numpy as np
 import pandas as pd
-import datetime
+from datetime import datetime
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import GradientBoostingRegressor, BaggingRegressor, RandomForestRegressor
 import streamlit as st
 import pandas as pd
 from sklearn.metrics import mean_squared_error, r2_score
 import re
-import joblib
-
-#app = Flask(__name__)
+import joblib,pickle
+from sklearn.preprocessing import OneHotEncoder
 
 # Load the dataset and split it into training and test sets
 data = pd.read_csv('D:/FCIS/Pattern/project/games-regression-dataset.csv')
@@ -33,28 +32,33 @@ cols_to_display = ['URL', 'ID', 'Name', 'Subtitle', 'Icon URL', 'User Rating Cou
                    'Original Release Date', 'Current Version Release Date', 'Average User Rating']
 
 # Define the list of models and their names
-model_names = ['encoder', 'le', 'MLB', 'multiLB', 'scaler', 'lr', 'mr', 'pr', 'rr', 'lr_lasso', 'en', 'br', 'gbr', 'bgr', 'rfr', 'xgb']
+model_names = ['encoder', 'le', 'MLB', 'multiLB', 'scaler', 'lr', 'rr', 'lr_lasso', 'en', 'br', 'gbr', 'bgr', 'rfr', 'xgb']
 models = []
 
 def load_models():
     # Load the models from their respective joblib files
     for name in model_names:
-        joblib_file = f"{name}.joblib"
-        joblib_file = os.path.join('D:/FCIS/Pattern/project/', joblib_file)
-        model = joblib.load(joblib_file)
+        pickle_file = f"{name}.pkl"
+        pickle_file = os.path.join('D:/FCIS/Pattern/project/', pickle_file)
+        model = pickle.load(open(pickle_file,'rb'))
         models.append(model)
+    
+    pickle_in = open("D:/FCIS/Pattern/project/mr.pickle","rb")
+    mr = pickle.load(pickle_in)
+    pickle_in = open("D:/FCIS/Pattern/project/pr.pickle","rb")
+    pr = pickle.load(pickle_in)
+    models.append(mr)
+    models.append(pr)
+    model_names.append('mr')
+    model_names.append('pr')
 
 # Define a function to preprocess the input data
 
-def preprocess_input(data, encoder, le, MLB, multiLB, top_features, scaler):
-    print(data['Languages'].isnull())
-    if(data['Languages'].isnull().iloc[0]):
-        data['Languages'] = data.fillna('EN')
 
-    '''
-    if(data['Subtitle'].isnull().iloc[0]):
-        data['Subtitle'] = data['Subtitle'].fillna(data['Name'])  
-    '''
+def preprocess_input(data, encoder, le, MLB, multiLB, top_features, scaler):
+    
+    if(data['Languages'].isnull().sum()):
+        data['Languages'] = data['Languages'].fillna('EN')
 
     data['size_Q1'] = data['Size'].apply(lambda x: 1 if x < 2.751732e+07 else 0)
     data['size_Q2'] = data['Size'].apply(lambda x: 1 if 2.751732e+07 <= x < 6.740582e+07 else 0)
@@ -67,7 +71,7 @@ def preprocess_input(data, encoder, le, MLB, multiLB, top_features, scaler):
         data['Subtitle'] = data['Subtitle'].fillna('')
     data['subtitle_yes_no'] = data['Subtitle'].apply(lambda x: 0 if x == '' else 1)
 
-    if(data['In-app Purchases'].isnull().iloc[0]):
+    if(data['In-app Purchases'].isnull().sum()):
         data['In-app Purchases'] = data['In-app Purchases'].fillna('0.0') #No data will be taken as $0
     data['In-app Purchases'] = data['In-app Purchases'].apply(lambda x: '0.0' if x == '0' else x) #for consistency
     data['In-app Purchases'] = data['In-app Purchases'].apply(lambda x: x.split(', ')) #turn string into list
@@ -77,11 +81,8 @@ def preprocess_input(data, encoder, le, MLB, multiLB, top_features, scaler):
     data['In-App-Q2'] = data['In-app Purchases'].apply(lambda x: 1 if any(25 <= float(i) < 50 for i in x) else 0) #prices from 25 to 49.99
     data['In-App-Q3'] = data['In-app Purchases'].apply(lambda x: 1 if any(50 <= float(i) < 75 for i in x) else 0) #prices from 50 to 74.99
     data['In-App-Q4'] = data['In-app Purchases'].apply(lambda x: 1 if any(75 <= float(i) < 100 for i in x) else 0) #prices from 75 to 99.99
-
-    X_test_encoded = encoder.transform(data[['Primary Genre']])
-    feature_names = encoder.get_feature_names(['Primary Genre'])
-    X_test_encoded_df = pd.DataFrame(X_test_encoded.toarray(), columns=feature_names)
-    data = pd.concat([data.reset_index(drop=True), X_test_encoded_df], axis=1)
+    
+    data['Primary Genre'] = encoder.transform(data['Primary Genre'])
 
     data["Age Rating"] = le.transform(data["Age Rating"])
     
@@ -92,6 +93,9 @@ def preprocess_input(data, encoder, le, MLB, multiLB, top_features, scaler):
     print(data.shape)
 
     data['Languages'] = data["Languages"].str.split(", ")
+    for i in data["Languages"]:
+        if(type(i)== float):
+            print(i)
     x_Languages_encoded = MLB.transform(data["Languages"])
     new_feature_names = ['Languages_' + name for name in MLB.classes_]
     data = pd.concat([data.reset_index(drop=True), pd.DataFrame(x_Languages_encoded, columns=new_feature_names)], axis=1)    
@@ -106,16 +110,26 @@ def preprocess_input(data, encoder, le, MLB, multiLB, top_features, scaler):
     data= data[top_features]
     #print(data)
     data_norm = scaler.transform(data)
-    return data_norm,data.columns
+    return data_norm
 
 
 # Define a function to make predictions on the input data
 def make_prediction(data, Y):
+    #data = data.reshape((len(data), 1))
+
     # Apply the trained regression models to the input data
     predictions = []
     mse_scores = []
     r2_scores = []
-    for i in range(5, len(models)):
+    prediction = models[5].predict(data[:,0].reshape(-1,1))
+    print(Y.shape)
+    mse = mean_squared_error(Y, prediction)
+    r2 = r2_score(Y, prediction)
+    predictions.append((model_names[5], prediction))
+    mse_scores.append(mse)
+    r2_scores.append(r2)
+    for i in range(6, len(models)):
+        print(i)
         model_name = model_names[i]
         model = models[i]
         prediction = model.predict(data)
@@ -135,7 +149,8 @@ def app():
 
     #Load Models
     load_models()
-
+    pickle_file = "top_feature_indices.pkl"
+    top = pickle.load(open(pickle_file,'rb'))
     # Define the input options
     input_option = st.selectbox('Select input option', ('Manual input', 'CSV file'))
 
@@ -204,10 +219,11 @@ def app():
             Y = data['Average User Rating']
 
             # Preprocess the input data
-            processed_data = preprocess_input(X, models[0], models[1], models[2], models[3], models[4])
+            processed_data = preprocess_input(X, models[0], models[1], models[2], models[3], top, models[4])
+            processed_data = np.array(processed_data)
 
             # Make a prediction on the input data
-            predictions, mse_scores, r2_scores = make_prediction(processed_data,Y)
+            predictions, mse_scores, r2_scores = make_prediction(processed_data, Y)
 
             # Display the prediction
             for i, (name, prediction) in enumerate(predictions):
