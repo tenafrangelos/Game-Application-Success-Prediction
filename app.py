@@ -32,7 +32,7 @@ cols_to_display = ['URL', 'ID', 'Name', 'Subtitle', 'Icon URL', 'User Rating Cou
                    'Original Release Date', 'Current Version Release Date', 'Average User Rating']
 
 # Define the list of models and their names
-model_names = ['encoder', 'le', 'MLB', 'multiLB', 'scaler', 'lr', 'rr', 'lr_lasso', 'en', 'br', 'gbr', 'bgr', 'rfr', 'xgb']
+model_names = ['encoder', 'MLB', 'multiLB', 'scaler', 'lr', 'rr', 'lr_lasso', 'en', 'br', 'bgr', 'rfr', 'xgb']
 models = []
 
 def load_models():
@@ -47,15 +47,19 @@ def load_models():
     mr = pickle.load(pickle_in)
     pickle_in = open("D:/FCIS/Pattern/project/pr.pickle","rb")
     pr = pickle.load(pickle_in)
+    pickle_in = open("D:/FCIS/Pattern/project/gbr.sav","rb")
+    gbr = pickle.load(pickle_in)
     models.append(mr)
     models.append(pr)
+    models.append(gbr)
     model_names.append('mr')
     model_names.append('pr')
+    model_names.append('gbr')
 
 # Define a function to preprocess the input data
 
 
-def preprocess_input(data, encoder, le, MLB, multiLB, top_features, scaler):
+def preprocess_input(data, encoder, MLB, multiLB, top_features, scaler):
     
     if(data['Languages'].isnull().sum()):
         data['Languages'] = data['Languages'].fillna('EN')
@@ -84,7 +88,8 @@ def preprocess_input(data, encoder, le, MLB, multiLB, top_features, scaler):
     
     data['Primary Genre'] = encoder.transform(data['Primary Genre'])
 
-    data["Age Rating"] = le.transform(data["Age Rating"])
+    scale_mapper = {"4+":4, "9+":9, "12+":12, "17+":17}
+    data["Age Rating"] = data["Age Rating"].replace(scale_mapper)
     
     date(data,'Original Release Date')
     date(data,'Current Version Release Date')
@@ -121,14 +126,14 @@ def make_prediction(data, Y):
     predictions = []
     mse_scores = []
     r2_scores = []
-    prediction = models[5].predict(data[:,0].reshape(-1,1))
+    prediction = models[4].predict(data[:,0].reshape(-1,1))
     print(Y.shape)
     mse = mean_squared_error(Y, prediction)
     r2 = r2_score(Y, prediction)
-    predictions.append((model_names[5], prediction))
+    predictions.append((model_names[4], prediction))
     mse_scores.append(mse)
     r2_scores.append(r2)
-    for i in range(6, len(models)):
+    for i in range(5, len(models)):
         print(i)
         model_name = model_names[i]
         model = models[i]
@@ -219,7 +224,7 @@ def app():
             Y = data['Average User Rating']
 
             # Preprocess the input data
-            processed_data = preprocess_input(X, models[0], models[1], models[2], models[3], top, models[4])
+            processed_data = preprocess_input(X, models[0], models[1], models[2], top, models[3])
             processed_data = np.array(processed_data)
 
             # Make a prediction on the input data
