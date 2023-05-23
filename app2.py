@@ -46,10 +46,10 @@ def load_models():
         model = pickle.load(open(pickle_file,'rb'))
         models.append(model)
 
-    pickle_in = open("D:/FCIS/Pattern/project/gbc_grid.sav","rb")
-    gbc_grid = pickle.load(pickle_in)
-    models.append(gbc_grid)
-    model_names.append('gbc_grid')
+    #pickle_in = open("D:/FCIS/Pattern/project/gbc_grid.sav","rb")
+    #gbc_grid = pickle.load(pickle_in)
+    #models.append(gbc_grid)
+    #model_names.append('gbc_grid')
 
 
 
@@ -122,20 +122,24 @@ def make_prediction(data, Y):
     # Apply the trained regression models to the input data
     predictions = []
     mse_scores = []
-    r2_scores = []
-    
+    accuracies = []
+    f1_scores = []
+
     for i in range(4, len(models)):
         print(i)
         model_name = model_names[i]
         model = models[i]
         prediction = model.predict(data)
         mse = mean_squared_error(Y, prediction)
-        r2 = r2_score(Y, prediction)
+        accuracy = accuracy_score(Y, prediction)
+        f1 = f1_score(Y, prediction, average='macro')
+
         predictions.append((model_name, prediction))
         mse_scores.append(mse)
-        r2_scores.append(r2)
+        accuracies.append(accuracy)
+        f1_scores.append(f1)
     
-    return predictions, mse_scores, r2_scores
+    return predictions, mse_scores, accuracies,f1_scores
 
 
 # Define the app layout
@@ -145,7 +149,7 @@ def app2():
 
     #Load Models
     load_models()
-    pickle_file = "top_feature_indices.pkl"
+    pickle_file = "D:/FCIS/Pattern/project/top_feature_indices.pkl"
     top = pickle.load(open(pickle_file,'rb'))
     # Define the input options
     input_option = st.selectbox('Select input option', ('Manual input', 'CSV file'))
@@ -223,14 +227,15 @@ def app2():
             processed_data = np.array(processed_data)
 
             # Make a prediction on the input data
-            predictions, mse_scores, r2_scores = make_prediction(processed_data, Y)
+            predictions ,mse_scores ,accuracies ,f1_scores = make_prediction(processed_data, Y)
 
             # Display the prediction
             for i, (name, prediction) in enumerate(predictions):
                 st.write(f"Model {i+1}: {name}")
                 st.write(f"Prediction: {prediction}")
                 st.write(f"Mean Squared Error: {mse_scores[i]}")
-                st.write(f"R2 score: {r2_scores[i]}")
+                st.write(f"Accuracy: {accuracies[i]}")
+                st.write(f"F1 scores: {f1_scores[i]}")
 
 if __name__ == '__main__':
     app2()
